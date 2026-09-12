@@ -148,12 +148,27 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- commit phase ----
+  // Batched deliberately: the old version did one "find-or-create topic"
+  // query plus one insert PER ROW, sequentially awaited. For a file with
+  // 1000+ rows that's 2000+ round trips to the DB in a single request,
+  // which is what was blowing past the serverless function's execution
+  // limit and coming back as a timeout (a non-JSON HTML error page,
+  // hence the JSON.parse crash on the client). Everything below is
+  // batched per course instead: a handful of queries no matter how many
+  // rows are in the file.
   const supabase = createAdminClient();
   const insertedByCourse: Record<string, number> = {};
   const skipped: { row: number; reason: string }[] = [];
   let inserted = 0;
 
-  // Group valid rows by course_code to resolve course_id/topic_id once per group
+  const CHUNK_SIZE = 500;
+  function chunk<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }
+
+  // Group valid rows by course_code to resolve course_id/topic_ids once per group
   const byCourse = new Map<string, ParsedRow[]>();
   for (const row of validRows) {
     const key = row.course_code.trim().toUpperCase();
@@ -169,36 +184,57 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (courseErr || !course) {
-      skipped.push({ row: -1, reason: `Course "${courseCode}" not found — create it first.` });
+      skipped.push({ row: -1, reason: `Course "${courseCode}" not found — create it first. (${rows.length} row(s) skipped.)` });
       continue;
     }
 
-    for (const row of rows) {
-      // Resolve or create the topic under this course
-      let { data: topic } = await supabase
+    // Resolve every distinct topic name in this batch in ONE query, then
+    // create only the ones that don't already exist in ONE insert —
+    // instead of a select+maybe-insert per row.
+    const { data: existingTopics, error: topicsFetchErr } = await supabase
+      .from("topics")
+      .select("id, name")
+      .eq("course_id", course.id);
+
+    if (topicsFetchErr) {
+      skipped.push({ row: -1, reason: `Could not read topics for "${courseCode}": ${topicsFetchErr.message}` });
+      continue;
+    }
+
+    const topicIdByName = new Map<string, string>();
+    for (const t of existingTopics ?? []) topicIdByName.set(t.name.trim().toLowerCase(), t.id);
+
+    const distinctTopicNames = Array.from(new Set(rows.map((r) => r.topic.trim())));
+    const missingTopicNames = distinctTopicNames.filter((n) => !topicIdByName.has(n.toLowerCase()));
+
+    if (missingTopicNames.length > 0) {
+      const { data: createdTopics, error: topicCreateErr } = await supabase
         .from("topics")
-        .select("id")
-        .eq("course_id", course.id)
-        .ilike("name", row.topic.trim())
-        .maybeSingle();
+        .insert(missingTopicNames.map((name) => ({ course_id: course.id, name })))
+        .select("id, name");
 
-      if (!topic) {
-        const { data: newTopic, error: topicErr } = await supabase
-          .from("topics")
-          .insert({ course_id: course.id, name: row.topic.trim() })
-          .select("id")
-          .single();
-        if (topicErr) {
-          skipped.push({ row: -1, reason: `Could not create topic "${row.topic}": ${topicErr.message}` });
-          continue;
-        }
-        topic = newTopic;
+      if (topicCreateErr) {
+        skipped.push({ row: -1, reason: `Could not create topics for "${courseCode}": ${topicCreateErr.message}` });
+        continue;
       }
+      for (const t of createdTopics ?? []) topicIdByName.set(t.name.trim().toLowerCase(), t.id);
+    }
 
-      const contentHash = normalizedHash(row.question_text);
-      const { error: insertErr } = await supabase.from("questions").insert({
+    // Build the insert payload. Duplicate detection against existing
+    // questions (and against repeats within this same file) is handled
+    // below by upsert-with-ignoreDuplicates on (course_id, content_hash)
+    // rather than a separate lookup query per row — Postgres's
+    // ON CONFLICT DO NOTHING skips both cases in one pass.
+    const toInsert: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const topicId = topicIdByName.get(row.topic.trim().toLowerCase());
+      if (!topicId) {
+        skipped.push({ row: -1, reason: `Could not resolve topic "${row.topic}" for "${courseCode}".` });
+        continue;
+      }
+      toInsert.push({
         course_id: course.id,
-        topic_id: topic.id,
+        topic_id: topicId,
         question_text: row.question_text.trim(),
         option_a: row.option_a,
         option_b: row.option_b,
@@ -206,16 +242,30 @@ export async function POST(req: NextRequest) {
         option_d: row.option_d,
         correct_option: row.correct_answer.toUpperCase(),
         explanation: row.explanation,
-        content_hash: contentHash,
+        content_hash: normalizedHash(row.question_text),
         created_by: admin.userId
       });
+    }
+
+    for (const batch of chunk(toInsert, CHUNK_SIZE)) {
+      const { data: insertedRows, error: insertErr } = await supabase
+        .from("questions")
+        .upsert(batch, { onConflict: "course_id,content_hash", ignoreDuplicates: true })
+        .select("id");
 
       if (insertErr) {
-        // Unique constraint violation = duplicate question for this course — not a hard failure
-        skipped.push({ row: -1, reason: insertErr.message });
-      } else {
-        inserted += 1;
-        insertedByCourse[courseCode] = (insertedByCourse[courseCode] || 0) + 1;
+        skipped.push({ row: -1, reason: `Batch insert failed for "${courseCode}" (${batch.length} rows): ${insertErr.message}` });
+        continue;
+      }
+      const insertedCount = insertedRows?.length ?? 0;
+      inserted += insertedCount;
+      insertedByCourse[courseCode] = (insertedByCourse[courseCode] || 0) + insertedCount;
+      const duplicateCount = batch.length - insertedCount;
+      if (duplicateCount > 0) {
+        skipped.push({
+          row: -1,
+          reason: `${duplicateCount} question(s) skipped for "${courseCode}" — already in the bank or repeated in this file.`
+        });
       }
     }
   }

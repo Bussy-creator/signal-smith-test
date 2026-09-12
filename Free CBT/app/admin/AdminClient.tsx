@@ -255,31 +255,43 @@ function BulkUploadSection() {
     })();
   }, []);
 
-  async function validate() {
-    if (!file) return;
-    setBusy(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("mode", "validate");
-    fd.append("requireExplanation", String(requireExplanation));
-    if (courseId) fd.append("courseId", courseId);
-    const res = await fetch("/api/questions/bulk-upload", { method: "POST", body: fd });
-    setReport(await res.json());
-    setBusy(false);
+  // Reads the response as JSON, but falls back to a readable message
+  // instead of throwing if the server returned something else (an HTML
+  // error page from a timeout/crash, for instance) — this is what was
+  // leaving the button stuck disabled: res.json() throwing meant
+  // setBusy(false) below never ran.
+  async function safeJson(res: Response) {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {
+        error: `Server returned an unexpected (non-JSON) response, status ${res.status}. This usually means the request timed out — try again, or split a very large file into smaller batches.`
+      };
+    }
   }
 
-  async function commit() {
+  async function runUpload(mode: "validate" | "commit") {
     if (!file) return;
     setBusy(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("mode", "commit");
-    fd.append("requireExplanation", String(requireExplanation));
-    if (courseId) fd.append("courseId", courseId);
-    const res = await fetch("/api/questions/bulk-upload", { method: "POST", body: fd });
-    setReport(await res.json());
-    setBusy(false);
+    setReport(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("mode", mode);
+      fd.append("requireExplanation", String(requireExplanation));
+      if (courseId) fd.append("courseId", courseId);
+      const res = await fetch("/api/questions/bulk-upload", { method: "POST", body: fd });
+      setReport(await safeJson(res));
+    } catch {
+      setReport({ error: "Network error while uploading. Check your connection and try again." });
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const validate = () => runUpload("validate");
+  const commit = () => runUpload("commit");
 
   return (
     <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-5">
@@ -336,6 +348,7 @@ function BulkUploadSection() {
 
       {report && (
         <div className="text-sm bg-gray-50 dark:bg-gray-900 rounded p-3 space-y-1 max-h-64 overflow-y-auto">
+          {report.error && <p className="text-red-500 font-medium">{report.error}</p>}
           {"validCount" in report && (
             <p>
               {report.validCount} valid / {report.invalidCount} invalid of {report.totalRows} rows.

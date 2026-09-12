@@ -208,3 +208,24 @@ create policy "read settings" on app_settings
   for select using (true);
 
 insert into app_settings (key, value) values ('support_phone', '');
+
+-- ---------------------------------------------------------
+-- PERFORMANCE: missing indexes found while fixing slow/crashing admin
+-- pages (bulk upload timeouts, general admin slowness, and intermittent
+-- session drops that were downstream of Supabase load). Postgres does
+-- NOT automatically index foreign key columns, so these were previously
+-- full table scans:
+--   - topics.course_id: hit on every bulk-upload commit (topic
+--     resolution) and every "Manage questions" load in the admin panel.
+--   - quiz_attempts.attempt_questions (GIN): the question-manager's
+--     delete-confirmation check ("has this question been used in a past
+--     attempt?") does a jsonb containment query (`@>`) against this
+--     column, which needs a GIN index to avoid scanning every attempt
+--     row on every delete click.
+-- Run this block once against the live database (Supabase SQL editor or
+-- migration) — it was not part of the original schema.sql applied at
+-- launch.
+-- ---------------------------------------------------------
+create index if not exists idx_topics_course on topics(course_id);
+create index if not exists idx_attempts_questions_gin on quiz_attempts using gin (attempt_questions);
+
