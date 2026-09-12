@@ -1,0 +1,10 @@
+<svg width="220" height="56" viewBox="0 0 220 56" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Free CBT logo">
+  <title>Free CBT</title>
+  <rect x="2" y="4" width="48" height="48" rx="12" fill="#1E4FDE"/>
+  <rect x="14" y="14" width="24" height="28" rx="3" fill="none" stroke="#FFFFFF" stroke-width="2.4"/>
+  <line x1="18.5" y1="21" x2="33.5" y2="21" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <line x1="18.5" y1="26.5" x2="33.5" y2="26.5" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M18.5 33.5 L23.5 38.5 L34.5 27.5" fill="none" stroke="#5CE0C6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="62" y="24" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="700" fill="#111827">Free</text>
+  <text x="62" y="45" font-family="Helvetica, Arial, sans-serif" font-size="19" font-weight="700" fill="#1E4FDE">CBT</text>
+</svg>
