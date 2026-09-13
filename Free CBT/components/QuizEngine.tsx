@@ -140,6 +140,29 @@ export default function QuizEngine({
     return () => clearInterval(interval);
   }, [mode, timeLimitSeconds, submit]);
 
+  // Defensive: this should be unreachable now that /api/quiz/start's
+  // cache is invalidated on question upload/edit/delete (see
+  // bulk-upload/route.ts and admin/questions/[id]/route.ts), but a
+  // course/topic combo that genuinely has zero questions — or any other
+  // future path that hands this component an empty array — should show
+  // a message, not crash on `questions[current]` being undefined.
+  if (questions.length === 0) {
+    return (
+      <div className="max-w-md mx-auto p-6 text-center space-y-3">
+        <p className="text-sm text-gray-500">
+          No questions came back for this attempt. This can happen right after new questions are
+          uploaded — try going back and starting again in a moment.
+        </p>
+        <button
+          onClick={() => window.history.back()}
+          className="px-4 py-2 rounded border border-gray-300 dark:border-gray-700 text-sm"
+        >
+          Go back
+        </button>
+      </div>
+    );
+  }
+
   const q = questions[current];
   const currentChecked = checked[q.question_id];
 

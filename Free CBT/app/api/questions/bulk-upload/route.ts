@@ -3,8 +3,20 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
 import { z } from "zod";
+import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+
+// /api/quiz/start caches each course's full question pool in Redis for
+// 30 min (key: qpool:<courseId>) so exam-start doesn't hammer Postgres
+// when many students begin at once. That cache MUST be invalidated here
+// whenever this route adds questions to a course — otherwise a course
+// whose pool was already cached (even cached as empty, before any
+// questions existed) won't show newly uploaded questions for up to 30
+// minutes, and practice/exam start can come back with zero questions
+// even though the topic picker (which reads Postgres directly) shows
+// them as available.
+const redis = Redis.fromEnv();
 
 // Expected columns in the CSV/XLSX template:
 // question_text, option_a, option_b, option_c, option_d, correct_answer,
@@ -159,6 +171,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const insertedByCourse: Record<string, number> = {};
   const skipped: { row: number; reason: string }[] = [];
+  const touchedCourseIds = new Set<string>();
   let inserted = 0;
 
   const CHUNK_SIZE = 500;
@@ -187,6 +200,7 @@ export async function POST(req: NextRequest) {
       skipped.push({ row: -1, reason: `Course "${courseCode}" not found — create it first. (${rows.length} row(s) skipped.)` });
       continue;
     }
+    touchedCourseIds.add(course.id);
 
     // Resolve every distinct topic name in this batch in ONE query, then
     // create only the ones that don't already exist in ONE insert —
@@ -269,6 +283,13 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  // Invalidate the cached question pool for every course touched by this
+  // upload, regardless of whether any rows were actually inserted (a run
+  // that only added a new topic, or that's a no-op due to dedup, still
+  // shouldn't leave a stale cache around) — see the comment at the top
+  // of this file for why this step exists.
+  await Promise.all([...touchedCourseIds].map((id) => redis.del(`qpool:${id}`)));
 
   await supabase.from("bulk_upload_jobs").insert({
     uploaded_by: admin.userId,

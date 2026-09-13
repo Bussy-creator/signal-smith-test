@@ -26,6 +26,8 @@ export default function PracticePage() {
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [questionCount, setQuestionCount] = useState(DEFAULT_COUNT);
   const [session, setSession] = useState<null | { attemptId: string; questions: any[] }>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [result, setResult] = useState<null | {
     score: number;
     topicBreakdown: any;
@@ -58,18 +60,30 @@ export default function PracticePage() {
   }, [availableCount]);
 
   async function start() {
-    const res = await fetch("/api/quiz/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        courseId,
-        mode: "practice",
-        topicIds: selectedTopics,
-        questionCount: Math.min(questionCount, availableCount)
-      })
-    });
-    const data = await res.json();
-    setSession({ attemptId: data.attemptId, questions: data.questions });
+    setStarting(true);
+    setStartError(null);
+    try {
+      const res = await fetch("/api/quiz/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId,
+          mode: "practice",
+          topicIds: selectedTopics,
+          questionCount: Math.min(questionCount, availableCount)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.questions)) {
+        setStartError(data.error ?? "Couldn't start practice — please try again.");
+        return;
+      }
+      setSession({ attemptId: data.attemptId, questions: data.questions });
+    } catch {
+      setStartError("Network error — check your connection and try again.");
+    } finally {
+      setStarting(false);
+    }
   }
 
   if (result)
@@ -157,11 +171,12 @@ export default function PracticePage() {
 
       <button
         onClick={start}
-        disabled={!hasAnyQuestions}
+        disabled={!hasAnyQuestions || starting}
         className="w-full py-2 rounded bg-brand text-white disabled:opacity-60"
       >
-        {selectedTopics.length === 0 ? "Practice all topics" : "Start practice"}
+        {starting ? "Starting…" : selectedTopics.length === 0 ? "Practice all topics" : "Start practice"}
       </button>
+      {startError && <p className="text-sm text-red-500 mt-2">{startError}</p>}
     </div>
   );
 }

@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+
+// Same reasoning as bulk-upload/route.ts: /api/quiz/start caches each
+// course's question pool in Redis for 30 min. Editing or deleting a
+// question here without invalidating that cache means students could
+// keep getting served the old (or deleted) version of a question for up
+// to 30 minutes after an admin fixes or removes it.
+const redis = Redis.fromEnv();
 
 /**
  * GET /api/admin/questions/[id]
@@ -77,6 +85,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  if (data?.course_id) await redis.del(`qpool:${data.course_id}`);
+
   return NextResponse.json({ question: data });
 }
 
@@ -95,8 +106,16 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!admin.ok) return admin.response;
 
   const supabase = createAdminClient();
-  const { error } = await supabase.from("questions").delete().eq("id", params.id);
+  const { data, error } = await supabase
+    .from("questions")
+    .delete()
+    .eq("id", params.id)
+    .select("course_id")
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (data?.course_id) await redis.del(`qpool:${data.course_id}`);
+
   return NextResponse.json({ ok: true });
 }

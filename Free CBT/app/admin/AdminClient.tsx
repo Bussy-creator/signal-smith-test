@@ -22,6 +22,7 @@ export default function AdminClient({ fullName }: { fullName?: string | null }) 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-10 space-y-10">
         <h1 className="text-2xl font-semibold">Admin</h1>
         <CourseManagerSection />
+        <CourseHealthSection />
         <BulkUploadSection />
         <QuestionManagerSection />
         <AdManagerSection />
@@ -231,6 +232,92 @@ function CourseManagerSection() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CourseHealthSection() {
+  const [results, setResults] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function runCheck() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/courses/health");
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not run the health check.");
+        return;
+      }
+      setResults(data.courses);
+    } catch {
+      setError("Network error while running the health check.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const statusStyles: Record<string, string> = {
+    ok: "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300",
+    warning: "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+    empty: "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300",
+    error: "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-300"
+  };
+  const statusLabel: Record<string, string> = {
+    ok: "OK",
+    warning: "Warning",
+    empty: "Empty",
+    error: "Error"
+  };
+
+  return (
+    <section className="border border-gray-200 dark:border-gray-800 rounded-lg p-5">
+      <h2 className="text-lg font-medium mb-1">Course health check</h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Checks every course at once: how many topics and questions it has, and flags anything with
+        zero questions (practice/exam would come up empty) or topics with no questions in them.
+        This also refreshes each course's cached question pool to match the database right now —
+        useful as a manual fix if a course ever seems stuck showing stale/missing questions.
+      </p>
+      <button
+        onClick={runCheck}
+        disabled={loading}
+        className="px-4 py-2 rounded bg-brand text-white text-sm disabled:opacity-60 mb-4"
+      >
+        {loading ? "Checking all courses…" : "Check all courses"}
+      </button>
+
+      {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
+
+      {results && (
+        <div className="space-y-2">
+          {results.length === 0 ? (
+            <p className="text-sm text-gray-400">No courses exist yet.</p>
+          ) : (
+            results.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 border border-gray-200 dark:border-gray-800 rounded p-3 text-sm"
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{c.code}</span>{" "}
+                  <span className="text-gray-500 truncate">{c.title}</span>
+                  <p className="text-xs text-gray-400 mt-0.5">{c.message}</p>
+                </div>
+                <span
+                  className={`shrink-0 self-start sm:self-center text-xs px-2 py-1 rounded ${
+                    statusStyles[c.status] ?? ""
+                  }`}
+                >
+                  {statusLabel[c.status] ?? c.status}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       )}
     </section>
