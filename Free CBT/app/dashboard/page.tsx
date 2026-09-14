@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     .order("code");
 
   // Past attempts, most recent first — drives "highest score" and "needs work" lists
-  const { data: attempts } = await supabase
+  const { data: attemptsRaw } = await supabase
     .from("quiz_attempts")
     .select("course_id, score, topic_breakdown, courses(code, title)")
     .eq("user_id", user.id)
@@ -39,12 +39,22 @@ export default async function DashboardPage() {
     .order("submitted_at", { ascending: false })
     .limit(50);
 
+  // supabase-js can't infer join cardinality from the select string alone
+  // (no generated Database types here), so it types `courses` as an array
+  // even though course_id → courses is many-to-one and it's always a
+  // single row at runtime. Normalize explicitly rather than casting, so
+  // this stays correct even if that ever weren't true.
+  const attempts = (attemptsRaw ?? []).map((a) => ({
+    ...a,
+    courses: Array.isArray(a.courses) ? (a.courses[0] ?? null) : a.courses
+  }));
+
   return (
     <DashboardClient
       profile={profile}
       activeEnrollment={activeEnrollment ?? []}
       allCourses={allCourses ?? []}
-      attempts={attempts ?? []}
+      attempts={attempts}
     />
   );
 }
