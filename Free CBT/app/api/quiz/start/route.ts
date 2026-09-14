@@ -42,7 +42,11 @@ function shuffle<T>(arr: T[]): T[] {
  * defaults to a standard 30 questions / 30 minutes if not overridden.
  */
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
+  // Bearer token is an optional, additive fallback alongside normal cookie
+  // auth — see lib/supabase/server.ts. Used by load-testing tools.
+  const authHeader = req.headers.get("authorization");
+  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const supabase = createClient(bearer);
   const {
     data: { user }
   } = await supabase.auth.getUser();

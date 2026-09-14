@@ -4,7 +4,14 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 // Used in Server Components / Route Handlers — respects the logged-in
 // user's session and therefore their RLS policies.
-export function createClient() {
+//
+// accessToken is optional and additive: normal cookie-based requests are
+// completely unaffected. It exists so API routes can also authenticate a
+// caller via `Authorization: Bearer <token>` (e.g. load testing tools that
+// can't easily replicate @supabase/ssr's cookie session format). A valid
+// Supabase-issued JWT is still required either way — this does not bypass
+// auth, it just adds a second supported way to present it.
+export function createClient(accessToken?: string) {
   const cookieStore = cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +27,10 @@ export function createClient() {
         remove(name: string, options) {
           cookieStore.set({ name, value: "", ...options });
         }
-      }
+      },
+      ...(accessToken
+        ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+        : {})
     }
   );
 }
