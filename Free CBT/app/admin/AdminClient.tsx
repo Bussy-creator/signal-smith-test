@@ -729,7 +729,7 @@ function QuestionManagerSection() {
                     >
                       Edit
                     </button>
-                    {deleteTarget?.id === q.id ? (
+                    {deleteTarget && deleteTarget.id === q.id ? (
                       <>
                         <span className="text-xs text-amber-600 self-center">
                           {deleteTarget.attemptReferenceCount > 0
