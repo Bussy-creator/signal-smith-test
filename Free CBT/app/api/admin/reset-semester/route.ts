@@ -19,9 +19,9 @@ export async function POST() {
   const supabase = createAdminClient();
   const { error, count } = await supabase
     .from("user_course_enrollment")
-    .update({ is_active: false })
+    .update({ is_active: false }, { count: "exact" })
     .eq("is_active", true)
-    .select("id", { count: "exact" });
+    .select("id");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
