@@ -189,15 +189,27 @@ export async function POST(req: NextRequest) {
     byCourse.get(key)!.push(row);
   }
 
-  for (const [courseCode, rows] of byCourse) {
-    const { data: course, error: courseErr } = await supabase
-      .from("courses")
-      .select("id")
-      .ilike("code", courseCode)
-      .single();
+  // Course codes are typed by hand ("PHY101" vs "PHY 101" vs "phy-101")
+  // and a literal .ilike() match treats those as different courses even
+  // though they're clearly meant to be the same one. Fetch every course
+  // once and match by a whitespace/case-normalized key instead — this
+  // also cuts the lookup from one query per course group down to one
+  // query total.
+  const normalize = (s: string) => s.replace(/[\s-]+/g, "").toUpperCase();
+  const { data: allCourses, error: allCoursesErr } = await supabase.from("courses").select("id, code");
+  const courseByNormalizedCode = new Map<string, { id: string; code: string }>();
+  if (!allCoursesErr) {
+    for (const c of allCourses ?? []) courseByNormalizedCode.set(normalize(c.code), c);
+  }
 
-    if (courseErr || !course) {
-      skipped.push({ row: -1, reason: `Course "${courseCode}" not found — create it first. (${rows.length} row(s) skipped.)` });
+  for (const [courseCode, rows] of byCourse) {
+    const course = courseByNormalizedCode.get(normalize(courseCode));
+
+    if (!course) {
+      skipped.push({
+        row: -1,
+        reason: `Course "${courseCode}" not found — create it first, or check its code matches exactly (spacing/case are ignored, but the letters and numbers must match). (${rows.length} row(s) skipped.)`
+      });
       continue;
     }
     touchedCourseIds.add(course.id);

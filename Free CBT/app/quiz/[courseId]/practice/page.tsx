@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import QuizEngine from "@/components/QuizEngine";
 import ResultView from "@/components/ResultView";
+import LoadingScreen from "@/components/LoadingScreen";
 
 interface Topic {
   id: string;
@@ -86,6 +87,10 @@ export default function PracticePage() {
     }
   }
 
+  if (starting) return <LoadingScreen message="Preparing your practice session…" />;
+
+  if (loadingTopics) return <LoadingScreen message="Loading topics…" />;
+
   if (result)
     return (
       <ResultView
@@ -120,9 +125,7 @@ export default function PracticePage() {
         time limit — you'll see whether each answer is right or wrong as soon as you pick it.
       </p>
       <div className="space-y-2 mb-6">
-        {loadingTopics ? (
-          <p className="text-sm text-gray-400">Loading topics…</p>
-        ) : topics.length === 0 ? (
+        {topics.length === 0 ? (
           <p className="text-sm text-gray-500">No topics found for this course yet.</p>
         ) : (
           topics.map((t) => (

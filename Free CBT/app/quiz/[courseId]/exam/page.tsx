@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import QuizEngine from "@/components/QuizEngine";
 import ResultView from "@/components/ResultView";
+import LoadingScreen from "@/components/LoadingScreen";
 
 const EXAM_QUESTION_COUNT = 30;
 const EXAM_MINUTES = 30;
@@ -26,23 +27,36 @@ export default function ExamPage() {
     mistakes: Mistake[];
   }>(null);
   const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   async function start() {
     setStarting(true);
-    const res = await fetch("/api/quiz/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        courseId,
-        mode: "exam",
-        questionCount: EXAM_QUESTION_COUNT,
-        timeLimitMinutes: EXAM_MINUTES
-      })
-    });
-    const data = await res.json();
-    setSession({ attemptId: data.attemptId, questions: data.questions, timeLimitSeconds: data.timeLimitSeconds });
-    setStarting(false);
+    setStartError(null);
+    try {
+      const res = await fetch("/api/quiz/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId,
+          mode: "exam",
+          questionCount: EXAM_QUESTION_COUNT,
+          timeLimitMinutes: EXAM_MINUTES
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.questions)) {
+        setStartError(data.error ?? "Couldn't start the exam — please try again.");
+        return;
+      }
+      setSession({ attemptId: data.attemptId, questions: data.questions, timeLimitSeconds: data.timeLimitSeconds });
+    } catch {
+      setStartError("Network error — check your connection and try again.");
+    } finally {
+      setStarting(false);
+    }
   }
+
+  if (starting) return <LoadingScreen message="Preparing your exam\u2026" />;
 
   if (result)
     return (
@@ -82,8 +96,9 @@ export default function ExamPage() {
         disabled={starting}
         className="w-full py-2 rounded bg-brand text-white disabled:opacity-60"
       >
-        {starting ? "Preparing exam…" : "Start Exam"}
+        Start Exam
       </button>
+      {startError && <p className="text-sm text-red-500 mt-2">{startError}</p>}
     </div>
   );
 }

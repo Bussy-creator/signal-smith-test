@@ -442,6 +442,14 @@ function BulkUploadSection() {
             </p>
           )}
           {"inserted" in report && <p className="font-medium text-green-600">Inserted {report.inserted} questions.</p>}
+          {report.skipped?.length > 0 && (
+            <div className="pt-1">
+              <p className="font-medium text-amber-600">{report.skipped.length} note(s) on skipped rows:</p>
+              {report.skipped.map((s: any, i: number) => (
+                <p key={i} className="text-amber-600">{s.reason}</p>
+              ))}
+            </div>
+          )}
           {report.errors?.map((e: any, i: number) => (
             <p key={i} className="text-red-500">Row {e.row}: {e.errors.join("; ")}</p>
           ))}
@@ -472,6 +480,11 @@ function QuestionManagerSection() {
   const [checkingDelete, setCheckingDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeConfirmText, setPurgeConfirmText] = useState("");
+  const [purging, setPurging] = useState(false);
+
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/admin/courses");
@@ -495,6 +508,7 @@ function QuestionManagerSection() {
       setQuestions(data.questions ?? []);
       setTopics(data.topics ?? []);
       setTotal(data.total ?? 0);
+      setAttemptCount(data.attemptCount ?? 0);
     }
     setLoading(false);
   }
@@ -559,6 +573,22 @@ function QuestionManagerSection() {
     setDeleteTarget(null);
     if (!res.ok) return setMessage({ text: data.error ?? "Could not delete question.", ok: false });
     setMessage({ text: "Question deleted.", ok: true });
+    loadQuestions();
+  }
+
+  const selectedCourse = courses.find((c) => c.id === courseId);
+
+  async function purgeCourse() {
+    if (!selectedCourse) return;
+    setPurging(true);
+    const res = await fetch(`/api/admin/questions?course_id=${courseId}`, { method: "DELETE" });
+    const data = await res.json();
+    setPurging(false);
+    setPurgeOpen(false);
+    setPurgeConfirmText("");
+    if (!res.ok) return setMessage({ text: data.error ?? "Could not purge questions.", ok: false });
+    setMessage({ text: `Deleted all ${data.deletedCount} question(s) for ${selectedCourse.code}.`, ok: true });
+    setPage(1);
     loadQuestions();
   }
 
@@ -754,6 +784,57 @@ function QuestionManagerSection() {
           >
             Next
           </button>
+        </div>
+      )}
+
+      {selectedCourse && total > 0 && (
+        <div className="mt-6 pt-5 border-t border-red-200 dark:border-red-900">
+          <h3 className="text-sm font-medium text-red-600 mb-1">Danger zone</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Permanently deletes every question in {selectedCourse.code} ({total} total). Topics are
+            kept, so a fresh bulk upload can reuse them. Past attempts keep their own snapshot and
+            are unaffected{attemptCount > 0 ? ` — but ${attemptCount} attempt(s) exist for this course.` : "."}
+          </p>
+          {!purgeOpen ? (
+            <button
+              onClick={() => setPurgeOpen(true)}
+              className="text-xs px-3 py-1.5 rounded border border-red-400 text-red-600"
+            >
+              Purge all questions for {selectedCourse.code}
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-xs text-gray-500">
+                Type <span className="font-mono font-medium">{selectedCourse.code}</span> to confirm:
+              </label>
+              <input
+                value={purgeConfirmText}
+                onChange={(e) => setPurgeConfirmText(e.target.value)}
+                className="w-full px-3 py-2 rounded border border-red-300 dark:border-red-800 bg-transparent text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={purgeCourse}
+                  disabled={
+                    purging ||
+                    purgeConfirmText.trim().toUpperCase() !== selectedCourse.code.trim().toUpperCase()
+                  }
+                  className="text-xs px-3 py-1.5 rounded bg-red-600 text-white disabled:opacity-50"
+                >
+                  {purging ? "Purging…" : `Permanently delete all ${total} question(s)`}
+                </button>
+                <button
+                  onClick={() => {
+                    setPurgeOpen(false);
+                    setPurgeConfirmText("");
+                  }}
+                  className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
