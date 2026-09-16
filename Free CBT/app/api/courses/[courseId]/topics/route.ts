@@ -12,7 +12,8 @@ import { publicReadLimiter, rateLimitedResponse } from "@/lib/rate-limit";
  * this route never returns question text, options, or answers — just a
  * per-topic count — so exposing it to regular students is safe.
  */
-export async function GET(req: NextRequest, { params }: { params: { courseId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
+  const { courseId } = await params;
   const supabase = createClient();
   const {
     data: { user }
@@ -27,13 +28,13 @@ export async function GET(req: NextRequest, { params }: { params: { courseId: st
   const { data: topics, error: topicsErr } = await admin
     .from("topics")
     .select("id, name")
-    .eq("course_id", params.courseId);
+    .eq("course_id", courseId);
   if (topicsErr) return NextResponse.json({ error: topicsErr.message }, { status: 500 });
 
   const { data: questions, error: qErr } = await admin
     .from("questions")
     .select("topic_id")
-    .eq("course_id", params.courseId);
+    .eq("course_id", courseId);
   if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
 
   const counts = new Map<string, number>();

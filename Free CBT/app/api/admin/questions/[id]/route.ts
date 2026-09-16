@@ -21,7 +21,8 @@ const redis = Redis.fromEnv();
  * recurses into each element, so this matches any attempt whose array
  * has an element containing question_id: <id>.
  */
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data: question, error } = await supabase
     .from("questions")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error || !question) {
@@ -42,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { count } = await supabase
     .from("quiz_attempts")
     .select("id", { count: "exact", head: true })
-    .contains("attempt_questions", [{ question_id: params.id }]);
+    .contains("attempt_questions", [{ question_id: id }]);
 
   return NextResponse.json({ question, attemptReferenceCount: count ?? 0 });
 }
@@ -57,7 +58,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
  * and recomputing it on every text edit would let an edited question
  * collide with (or fail to dedup against) a re-uploaded original.
  */
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -87,7 +89,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       explanation: explanation ?? "",
       topic_id
     })
-    .eq("id", params.id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -108,7 +110,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  * already warned the admin (via the attemptReferenceCount from GET
  * above) before calling this; this endpoint does not re-check.
  */
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -119,7 +122,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const { data, error } = await supabase
     .from("questions")
     .delete()
-    .eq("id", params.id)
+    .eq("id", id)
     .select("course_id")
     .single();
 

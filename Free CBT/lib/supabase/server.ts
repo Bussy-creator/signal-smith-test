@@ -11,8 +11,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 // can't easily replicate @supabase/ssr's cookie session format). A valid
 // Supabase-issued JWT is still required either way — this does not bypass
 // auth, it just adds a second supported way to present it.
-export function createClient(accessToken?: string) {
-  const cookieStore = cookies();
+export async function createClient(accessToken?: string) {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
