@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 /**
  * POST /api/admin/courses
@@ -15,6 +16,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const { code, title, department, level, semester } = await req.json();
 
@@ -57,6 +61,9 @@ export async function GET() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("courses")
@@ -77,6 +84,9 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const { id, code, title, department, level, semester } = await req.json();
 
@@ -122,6 +132,9 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const id = req.nextUrl.searchParams.get("id");
   if (!id) {

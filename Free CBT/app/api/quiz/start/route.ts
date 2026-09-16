@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { quizStartLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 const redis = Redis.fromEnv();
 const POOL_CACHE_TTL = 60 * 30; // 30 min — question bank doesn't change mid-exam-window
@@ -51,6 +52,9 @@ export async function POST(req: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success, reset } = await quizStartLimiter.limit(user.id);
+  if (!success) return rateLimitedResponse(reset);
 
   const { courseId, mode, topicIds, questionCount = 30, timeLimitMinutes = 30 } = await req.json();
 

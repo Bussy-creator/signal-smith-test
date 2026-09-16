@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 // Same reasoning as bulk-upload/route.ts: /api/quiz/start caches each
 // course's question pool in Redis for 30 min. Editing or deleting a
@@ -23,6 +24,9 @@ const redis = Redis.fromEnv();
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const supabase = createAdminClient();
   const { data: question, error } = await supabase
@@ -56,6 +60,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const body = await req.json();
   const { question_text, option_a, option_b, option_c, option_d, correct_option, explanation, topic_id } = body;
@@ -104,6 +111,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const supabase = createAdminClient();
   const { data, error } = await supabase

@@ -17,6 +17,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const justRegistered = searchParams.get("registered") === "1";
+  const callbackFailed = searchParams.get("error") === "auth-callback-failed";
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,6 +60,12 @@ function LoginForm() {
           Account created — log in to continue.
         </p>
       )}
+      {callbackFailed && (
+        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 rounded px-3 py-2 mb-4">
+          That link has expired or was already used. Request a new one from{" "}
+          <a href="/forgot-password" className="underline">forgot password</a>.
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm mb-1">Email or Student ID</label>
@@ -80,6 +87,9 @@ function LoginForm() {
           />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
+        <div className="flex justify-end">
+          <a href="/forgot-password" className="text-xs text-brand">Forgot password?</a>
+        </div>
         <button
           disabled={loading}
           className="w-full py-2 rounded bg-brand text-white disabled:opacity-60 flex items-center justify-center gap-2"

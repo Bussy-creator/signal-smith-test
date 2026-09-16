@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { checkAnswerLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 interface AttemptQuestion {
   question_id: string;
@@ -27,6 +28,9 @@ export async function POST(req: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success, reset } = await checkAnswerLimiter.limit(user.id);
+  if (!success) return rateLimitedResponse(reset);
 
   const { attemptId, questionId, answer } = await req.json();
   if (!attemptId || !questionId) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 /**
  * POST /api/admin/reset-semester
@@ -15,6 +16,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 export async function POST() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const supabase = createAdminClient();
   const { error, count } = await supabase

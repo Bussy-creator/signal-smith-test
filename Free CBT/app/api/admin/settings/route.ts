@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 /** GET /api/admin/settings — list every setting for the admin panel */
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const supabase = createAdminClient();
   const { data, error } = await supabase.from("app_settings").select("key, value");
@@ -22,6 +26,9 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const { key, value } = await req.json();
   if (!key) return NextResponse.json({ error: "key is required." }, { status: 400 });

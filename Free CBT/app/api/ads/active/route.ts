@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { createClient } from "@/lib/supabase/server";
+import { publicReadLimiter, getClientIp, rateLimitedResponse } from "@/lib/rate-limit";
 
 const redis = Redis.fromEnv();
 const CACHE_TTL_SECONDS = 60;
@@ -14,6 +15,12 @@ const CACHE_TTL_SECONDS = 60;
  * other request in that 60s window is served from Redis.
  */
 export async function GET(req: NextRequest) {
+  // No auth on this route (ad content isn't sensitive), so this is
+  // IP-keyed rather than user-keyed — same generosity reasoning as
+  // ipFloodLimiter re: shared campus NAT applies here too.
+  const { success, reset } = await publicReadLimiter.limit(getClientIp(req));
+  if (!success) return rateLimitedResponse(reset);
+
   const placement = req.nextUrl.searchParams.get("placement");
   if (!placement || !["watermark", "result_banner", "dashboard"].includes(placement)) {
     return NextResponse.json({ error: "Invalid placement" }, { status: 400 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 const redis = Redis.fromEnv();
 const POOL_CACHE_TTL = 60 * 30; // matches /api/quiz/start's cache window
@@ -26,6 +27,9 @@ const POOL_CACHE_TTL = 60 * 30; // matches /api/quiz/start's cache window
 export async function GET() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const supabase = createAdminClient();
   const { data: courses, error } = await supabase.from("courses").select("id, code, title").order("code");

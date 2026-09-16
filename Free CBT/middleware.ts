@@ -1,8 +1,44 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ipFloodLimiter, getClientIp, rateLimitedResponse } from "@/lib/rate-limit";
 
 export async function middleware(request: NextRequest) {
+  // Force HTTPS. Vercel's edge network already redirects http→https for
+  // every deployment, so in normal operation this should never actually
+  // fire — it's defense-in-depth for the case of a custom domain whose
+  // DNS/proxy setup ever bypasses that, not a gap that exists today.
+  // x-forwarded-proto isn't set locally, so this is a no-op in dev.
+  const proto = request.headers.get("x-forwarded-proto");
+  if (proto === "http") {
+    const httpsUrl = request.nextUrl.clone();
+    httpsUrl.protocol = "https:";
+    return NextResponse.redirect(httpsUrl, 308);
+  }
+
+  // API routes: flood protection only, keyed by IP, ahead of everything
+  // else. Deliberately skips the cookie/session logic below entirely —
+  // each API route already does its own auth check (see lib/supabase/server.ts
+  // usage in each route), so redoing it here would just be wasted work.
+  // See lib/rate-limit.ts for why this limiter is generous rather than
+  // strict (shared campus/hostel NAT IPs).
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const ip = getClientIp(request);
+    const { success, reset } = await ipFloodLimiter.limit(ip);
+    if (!success) return rateLimitedResponse(reset);
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
+
+  // Everything below this point only matters for /dashboard, /quiz, and
+  // /admin (auth-gated pages). For every other page (/, /login,
+  // /register, etc.) there's nothing left to check — skip building a
+  // Supabase client and making a real network call to its auth server on
+  // every public page load, now that this middleware runs broadly (see
+  // matcher below) rather than just on protected paths.
+  const protectedPaths = ["/dashboard", "/quiz", "/admin"];
+  const isProtectedPath = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
+  if (!isProtectedPath) return response;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,10 +80,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const protectedPaths = ["/dashboard", "/quiz", "/admin"];
-  const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
-
-  if (isProtected && !user) {
+  if (!user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
@@ -82,5 +115,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/quiz/:path*", "/admin/:path*"]
+  // Broad catch-all (excluding Next's static/image assets and the
+  // favicon) so the HTTPS-force check above genuinely covers every
+  // route, not just the ones needing auth/rate-limit logic — the
+  // pathname branches inside middleware() handle the rest per-route.
+  matcher: ["/((?!_next/static|_next/image|.*\\.svg$).*)"]
 };

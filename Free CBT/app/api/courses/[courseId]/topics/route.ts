@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { publicReadLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 /**
  * GET /api/courses/[courseId]/topics
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest, { params }: { params: { courseId: st
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success, reset } = await publicReadLimiter.limit(user.id);
+  if (!success) return rateLimitedResponse(reset);
 
   const admin = createAdminClient();
 

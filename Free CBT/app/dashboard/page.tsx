@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import DashboardClient from "./DashboardClient";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  // Auth-gated and personalized per student — nothing to index, also
+  // disallowed in robots.ts.
+  robots: { index: false, follow: false }
+};
 
 export default async function DashboardPage() {
   const supabase = createClient();

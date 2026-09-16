@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { quizSubmitLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 interface AttemptOption {
   key: "A" | "B" | "C" | "D";
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
     data: { user }
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { success, reset } = await quizSubmitLimiter.limit(user.id);
+  if (!success) return rateLimitedResponse(reset);
 
   const body = await req.json();
   const { attemptId, answers, autoSubmitted } = body as {

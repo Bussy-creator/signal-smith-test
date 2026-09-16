@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { bulkUploadLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 // /api/quiz/start caches each course's full question pool in Redis for
 // 30 min (key: qpool:<courseId>) so exam-start doesn't hammer Postgres
@@ -93,6 +94,9 @@ function normalizedHash(questionText: string): string {
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await bulkUploadLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 const PAGE_SIZE = 20;
 const redis = Redis.fromEnv();
@@ -21,6 +22,9 @@ const redis = Redis.fromEnv();
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const courseId = req.nextUrl.searchParams.get("course_id");
   if (!courseId) {
@@ -84,6 +88,9 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const courseId = req.nextUrl.searchParams.get("course_id");
   if (!courseId) {

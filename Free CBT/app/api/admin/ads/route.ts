@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
 import { createAdminClient } from "@/lib/supabase/server";
+import { adminWriteLimiter, rateLimitedResponse } from "@/lib/rate-limit";
 
 const BUCKET = "ad-flyers";
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -25,6 +26,9 @@ async function ensureBucketExists(supabase: ReturnType<typeof createAdminClient>
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const formData = await req.formData();
   const sponsorName = formData.get("sponsor_name") as string | null;
@@ -97,6 +101,9 @@ export async function GET() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("advertisements")
@@ -111,6 +118,9 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+
+  const { success, reset } = await adminWriteLimiter.limit(admin.userId);
+  if (!success) return rateLimitedResponse(reset);
 
   const { id, is_active } = await req.json();
   if (!id || typeof is_active !== "boolean") {
