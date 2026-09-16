@@ -7,9 +7,13 @@ export async function middleware(request: NextRequest) {
   // every deployment, so in normal operation this should never actually
   // fire — it's defense-in-depth for the case of a custom domain whose
   // DNS/proxy setup ever bypasses that, not a gap that exists today.
-  // x-forwarded-proto isn't set locally, so this is a no-op in dev.
+  // Only enforce in production — Next's dev server (Next 16+) sets
+  // x-forwarded-proto: http on every local request itself, so this used
+  // to fire unconditionally in dev and redirect localhost to a
+  // non-existent HTTPS listener. Restrict the check to production, which
+  // is the only environment this defense-in-depth guard is meant for.
   const proto = request.headers.get("x-forwarded-proto");
-  if (proto === "http") {
+  if (process.env.NODE_ENV === "production" && proto === "http") {
     const httpsUrl = request.nextUrl.clone();
     httpsUrl.protocol = "https:";
     return NextResponse.redirect(httpsUrl, 308);
