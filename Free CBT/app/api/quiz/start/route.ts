@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   // auth — see lib/supabase/server.ts. Used by load-testing tools.
   const authHeader = req.headers.get("authorization");
   const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-  const supabase = createClient(bearer);
+  const supabase = await createClient(bearer);
   const {
     data: { user }
   } = await supabase.auth.getUser();

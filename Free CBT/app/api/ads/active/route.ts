@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ads: cached, cached: true });
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const nowIso = new Date().toISOString();
   const { data: ads, error } = await supabase
     .from("advertisements")

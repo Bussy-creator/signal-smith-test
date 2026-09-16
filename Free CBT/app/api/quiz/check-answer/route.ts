@@ -23,7 +23,7 @@ interface AttemptQuestion {
  * This route only reads the attempt's stored answer key to compare.
  */
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();

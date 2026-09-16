@@ -14,7 +14,7 @@ import { publicReadLimiter, rateLimitedResponse } from "@/lib/rate-limit";
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -52,7 +52,7 @@ export default async function DashboardPage() {
   // even though course_id → courses is many-to-one and it's always a
   // single row at runtime. Normalize explicitly rather than casting, so
   // this stays correct even if that ever weren't true.
-  const attempts = (attemptsRaw ?? []).map((a) => ({
+  const attempts = (attemptsRaw ?? []).map((a: NonNullable<typeof attemptsRaw>[number]) => ({
     ...a,
     courses: Array.isArray(a.courses) ? (a.courses[0] ?? null) : a.courses
   }));
