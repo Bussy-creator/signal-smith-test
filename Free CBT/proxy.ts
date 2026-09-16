@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { ipFloodLimiter, getClientIp, rateLimitedResponse } from "@/lib/rate-limit";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Force HTTPS. Vercel's edge network already redirects http→https for
   // every deployment, so in normal operation this should never actually
   // fire — it's defense-in-depth for the case of a custom domain whose
